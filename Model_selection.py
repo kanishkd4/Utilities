@@ -7,10 +7,10 @@ from sklearn.model_selection import train_test_split
 __authors__ = "Kanishk Dogar", "Arya Poddar"
 __version__ = "0.0.1"
 
-class PDM:
+class MS:
     """
-    Create and summarise different pre delinquency models
-    PDM stores data and applies multiple models to a training and test set based on models and hyperparameters selected.
+    Create and summarise different scikit learn models
+    MS stores data and applies multiple models to a training and test set based on models and hyperparameters selected.
 
     Parameters
     ----------
