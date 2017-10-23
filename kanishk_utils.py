@@ -43,7 +43,7 @@ def univariate(modelBase, target="target"):
     return var_start_list
 
 
-def train_test_transform(modelBase, target="target", small_sample_floor=0.1, combine_small_samples=True, test_size=0.2, random_state=12345):
+def train_test_transform(modelBase, target="target", small_sample_floor=0.01, combine_small_samples=True, test_size=0.2, random_state=12345):
     if combine_small_samples:
         for column in modelBase.select_dtypes(["object"]).columns:
             cnt = pd.value_counts(modelBase[column], normalize=True)
