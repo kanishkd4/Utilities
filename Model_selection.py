@@ -134,6 +134,7 @@ class MS:
         print(f"GBM Test precision:{test_precision:{4}.{4}}%")
 
         self.gbc = gbc
+        self.gbc_best_model = gbm_clf
         self.trainPredGBM, self.testPredGBM = trainPredGBM, testPredGBM
         return self.gbc
 
@@ -177,6 +178,7 @@ class MS:
         print(f"Random Forest Test precision:{test_precision:{4}.{4}}%")
 
         self.rfc = rfc
+        self.rfc_best_model = rfc_clf
         self.trainPredRF, self.testPredRF = trainPredRF, testPredRF
         return self.rfc
 
@@ -239,6 +241,7 @@ class MS:
         print(f"SVM Test precision:{test_precision:{4}.{4}}%")
 
         self.pipe_svc = pipe_svc
+        self.svm_best_model = svc_clf2
         self.trainPredSVM, self.testPredSVM = trainPredSVM, testPredSVM
         return self.pipe_svc
 
