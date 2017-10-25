@@ -1,4 +1,3 @@
-__version__: "0.0.1"
 
 from IPython.core.interactiveshell import InteractiveShell
 InteractiveShell.ast_node_interactivity = "all"
