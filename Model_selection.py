@@ -7,6 +7,7 @@ from sklearn.model_selection import learning_curve
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.svm import SVC
 from sklearn.naive_bayes import GaussianNB
+from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import RandomizedSearchCV, GridSearchCV
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
@@ -18,8 +19,9 @@ from bokeh.models import Range1d, Legend, Title, Label
 
 
 __authors__ = "Kanishk Dogar", "Arya Poddar"
-__version__ = "0.0.2"
+__version__ = "0.0.4"
 
+# option to add scorer added
 class MS:
     """
     Create and summarise different scikit learn models
@@ -33,7 +35,7 @@ class MS:
         the name of the dataframe in which all the data is stored
     """
     def __init__(self, modelBase, target="target", small_sample_floor=0.01, combine_small_samples=True, test_size=0.2, random_state=12345, univariate_test=True,
-                n_jobs=-1, learning_curve_train_sizes=[0.05, 0.1, 0.2, 0.4, 0.75, 1], fast=True, CV=5, verbose=1, automated=False):
+                n_jobs=-1, learning_curve_train_sizes=[0.05, 0.1, 0.2, 0.4, 0.75, 1], fast=True, CV=5, verbose=1, automated=False, scoring="accuracy"):
         self.target = target
         self.modelBase = modelBase
         self.small_sample_floor = small_sample_floor
@@ -46,21 +48,18 @@ class MS:
         self.fast = fast
         self.CV = CV
         self.verbose = verbose
+        self.scoring = scoring
+
 
         if self.univariate_test:
             self.univariate()
         self.train_test_transform()
 
         if automated:
-            self.fit_gbm()
-            self.fit_Random_forest()
-            self.fit_SVM()
-            self.fit_Naive_Bayes()
-            output_notebook()
-            self.evaluate_GBM()
-            self.evaluate_Random_forest()
-            self.evaluate_SVM()
-            self.evaluate_Naive_Bayes()
+            self.fit_models()
+            self.apply_models()
+            self.evaluate_models()
+
 
     def univariate(self):
         """
@@ -106,197 +105,138 @@ class MS:
 
         self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(self.X, self.y, test_size=self.test_size, random_state=self.random_state)
 
-    def fit_gbm(self):
-        gbc = GradientBoostingClassifier()
-        train_sizes, train_scores, test_scores = learning_curve(gbc, self.X_train, self.y_train, cv=5, n_jobs=self.n_jobs, train_sizes=self.train_sizes)
-        curve = pd.concat([pd.DataFrame(train_sizes), pd.DataFrame(np.mean(train_scores, axis=1)), 
-                   pd.DataFrame(np.mean(test_scores, axis=1)), pd.DataFrame(np.std(train_scores, axis=1)), 
-                   pd.DataFrame(np.std(test_scores, axis=1))], axis=1)
-        curve.columns = ["training_sample_size", "mean_train_accuracy", "mean_test_accuracy", "std_train_accuracy", "std_test_accuracy"]
-        self.gbm_curve = curve
+    def fit_models(self, models=["gbm", "random_forest", "svm", "naive_bayes", "logistic_regression"]):
+        self.models = models
+        self.curve = {}
+        estimators = {}
+        curve = {}
+        n_cv = {}
+        param_grid = {}
+        clf = {}
+        for estimator in models:
+            if estimator == "gbm":
+                estimators[estimator] = GradientBoostingClassifier()
+            elif estimator == "random_forest":
+                estimators[estimator] = RandomForestClassifier()
+            elif estimator == "svm":
+                estimators[estimator] = SVC(random_state=1, probability=True)
+            elif estimator == "naive_bayes":
+                estimators[estimator] = GaussianNB()
+            elif estimator == "logistic_regression":
+                estimators[estimator] = LogisticRegression()
+            else:
+                print("method not applicable for model")
+
+        for estimator in models:
+            if estimator in ["gbm", "random_forest", "svm", "logistic_regression"]:
+                train_sizes, train_scores, test_scores = learning_curve(estimators[estimator], self.X_train, self.y_train, cv=5, n_jobs=self.n_jobs, train_sizes=self.train_sizes)
+                curve = pd.concat([pd.DataFrame(train_sizes), pd.DataFrame(np.mean(train_scores, axis=1)), 
+                           pd.DataFrame(np.mean(test_scores, axis=1)), pd.DataFrame(np.std(train_scores, axis=1)), 
+                           pd.DataFrame(np.std(test_scores, axis=1))], axis=1)
+                curve.columns = ["training_sample_size", "mean_train_accuracy", "mean_test_accuracy", "std_train_accuracy", "std_test_accuracy"]
+                self.curve[estimator] = curve
         
-        if self.fast:
-            n_gbm = np.min([self.X_train.shape[0], 50000])
-        else:
-            n_gbm = self.X_train.shape[0]
+                if self.fast:
+                    n_cv[estimator] = np.min([self.X_train.shape[0], 50000])
+                else:
+                    n_cv[estimator] = self.X_train.shape[0]
 
-        X_train_cv = self.X_train.sample(n=np.int(np.rint(n_gbm)))
-        y_train_cv = self.y_train[self.y_train.index.isin(X_train_cv.index)]
-        y_train_cv = y_train_cv.reindex(X_train_cv.index)
+                X_train_cv = self.X_train.sample(n=np.int(np.rint(n_cv[estimator])))
+                y_train_cv = self.y_train[self.y_train.index.isin(X_train_cv.index)]
+                y_train_cv = y_train_cv.reindex(X_train_cv.index)
+                for estimator in models:
+                    if estimator == "gbm":
+                        param_grid[estimator] = {"learning_rate":[0.001, 0.01, 0.1, 1], "n_estimators":[10, 100, 500], "min_weight_fraction_leaf":[0.06, 0.1], "max_depth":[3, 10, 20, 40, 80]}
+                    elif estimator == "random_forest":
+                        param_grid[estimator] = {"n_estimators":[10, 100, 200, 500], "min_weight_fraction_leaf":[0.06, 0.1], "max_depth":[3, 10, 20, 40, 80], "max_features":["auto", "sqrt", "log2", None]}
+                    elif estimator == "svm":
+                        param_grid[estimator+"1"] = {"svc__kernel": ["rbf", "sigmoid", "linear", "poly"]}
+                    elif estimator == "logistic_regression":
+                        param_grid[estimator+"1"] = {"logisticregression__C":[0.001, 0.01, 0.1, 1, 10]}
 
-        param_grid_gbm = {"learning_rate":[0.001, 0.01, 0.1, 1], "n_estimators":[10, 100, 500], "min_weight_fraction_leaf":[0.06, 0.1], "max_depth":[3, 10, 20, 40, 80]}
+        for estimator in models:
+            if estimator in ["gbm", "random_forest"]:
+                clf[estimator] = RandomizedSearchCV(estimators[estimator], param_grid[estimator], verbose=self.verbose, cv=self.CV, n_jobs=-1, n_iter=100, return_train_score=False, scoring=self.scoring)
+                clf[estimator].fit(X_train_cv, y_train_cv)
+                print(estimator+" best CV score:", clf[estimator].best_score_)
+                if estimator == "gbm":
+                    estimators[estimator].set_params(learning_rate=clf[estimator].best_params_["learning_rate"], n_estimators=clf[estimator].best_params_["n_estimators"], max_depth=clf[estimator].best_params_["max_depth"], min_weight_fraction_leaf=clf[estimator].best_params_["min_weight_fraction_leaf"])
+                elif estimator == "random_forest":
+                    estimators[estimator].set_params(n_estimators=clf[estimator].best_params_["n_estimators"], max_depth=clf[estimator].best_params_["max_depth"], min_weight_fraction_leaf=clf[estimator].best_params_["min_weight_fraction_leaf"], max_features=clf[estimator].best_params_["max_features"])
 
-        gbm_clf = RandomizedSearchCV(gbc, param_grid_gbm, verbose=self.verbose, cv=self.CV, n_jobs=-1, n_iter=100, return_train_score=False)
-        gbm_clf.fit(X_train_cv, y_train_cv)
-        print("GBM best CV score:", gbm_clf.best_score_)
-        gbc.set_params(learning_rate=gbm_clf.best_params_["learning_rate"], n_estimators=gbm_clf.best_params_["n_estimators"], max_depth=gbm_clf.best_params_["max_depth"], min_weight_fraction_leaf=gbm_clf.best_params_["min_weight_fraction_leaf"])
+                estimators[estimator].fit(self.X_train, self.y_train)
+            
+            elif estimator in ["svm", "logistic_regression"]:
+                estimators[estimator] = make_pipeline(StandardScaler(), estimators[estimator])
+                clf[estimator+"1"] = GridSearchCV(estimators[estimator], param_grid[estimator+"1"], verbose=self.verbose, cv=self.CV, n_jobs=self.n_jobs, return_train_score=False, scoring=self.scoring)
+                clf[estimator+"1"].fit(X_train_cv, y_train_cv)
 
-        gbc.fit(self.X_train, self.y_train)
-        trainPredGBM = gbc.predict(self.X_train)
-        testPredGBM = gbc.predict(self.X_test)
-        train_accuracy = accuracy_score(self.y_train, trainPredGBM)*100
-        print(f"GBM Training accuracy:{train_accuracy:{4}.{4}}%")
-        test_accuracy = accuracy_score(self.y_test, testPredGBM)*100
-        print(f"GBM Test accuracy:{test_accuracy:{4}.{4}}%")
+                if estimator == "logistic_regression":
+                    estimators[estimator].set_params(logisticregression__C=clf[estimator+"1"].best_params_["logisticregression__C"])
+                    estimators[estimator].fit(self.X_train, self.y_train)
 
-        train_precision = precision_score(self.y_train, trainPredGBM)*100
-        print(f"GBM Training precision:{train_precision:{4}.{4}}%")
-        test_precision = precision_score(self.y_test, testPredGBM)*100
-        print(f"GBM Test precision:{test_precision:{4}.{4}}%")
+                elif estimator == "svm":
+                    estimators[estimator] = make_pipeline(StandardScaler(), SVC(random_state=1, kernel=clf[estimator+"1"].best_params_["svc__kernel"], probability=True))
+                    if clf[estimator+"1"].best_params_["svc__kernel"] == "linear":
+                        param_grid[estimator+"2"] = {"svc__C": [0.001, 0.01, 0.1, 1.0, 10.0, 100]}
+                    else:
+                        param_grid[estimator+"2"] = {"svc__C": [0.001, 0.01, 0.1, 1.0, 10.0, 100], "svc__gamma": [0.001, 0.01, 0.1, 1.0, 10.0, 100]}
+                    
+                    clf[estimator+"2"] = GridSearchCV(estimators[estimator], param_grid[estimator+"2"], verbose=self.verbose, cv=self.CV, n_jobs=self.n_jobs, return_train_score=False, scoring=self.scoring)
+                    clf[estimator+"2"].fit(X_train_cv, y_train_cv)
 
-        self.gbc = gbc
-        self.gbc_best_model = gbm_clf
-        self.trainPredGBM, self.testPredGBM = trainPredGBM, testPredGBM
+                    if clf[estimator+"1"].best_params_["svc__kernel"] == "linear":
+                        estimators[estimator] = make_pipeline(StandardScaler(), SVC(random_state=1, kernel=clf[estimator+"1"].best_params_["svc__kernel"], 
+                                                                       C=clf[estimator+"2"].best_params_["svc__C"], probability=True))
+                    else:
+                        estimators[estimator] = make_pipeline(StandardScaler(), SVC(random_state=1, kernel=clf[estimator+"1"].best_params_["svc__kernel"], 
+                                                                       C=clf[estimator+"2"].best_params_["svc__C"], gamma=clf[estimator+"2"].best_params_["svc__gamma"], probability=True))
+
+                    print(estimator+" best CV score:", clf[estimator+"2"].best_score_)
+                    estimators[estimator].fit(self.X_train, self.y_train)
+
+            elif estimator == "naive_bayes":
+                estimators[estimator].fit(self.X_train, self.y_train)
+
+
+            print(f"{estimator} fitting complete")
+
+        self.estimators = estimators
+        self.n_cv = n_cv
+        self.clf = clf
+
+    def apply_models(self):
+        trainPred = {}
+        testPred = {}
         
-        return self.gbc
+        for estimator in self.models:
+            trainPred[estimator] = self.estimators[estimator].predict(self.X_train)
+            testPred[estimator] = self.estimators[estimator].predict(self.X_test)
 
-    def evaluate_GBM(self):
-        self.GBM_train_performance, GBM_train_KS, GBM_train_Gini, self.GBM_test_performance, GBM_test_KS, GBM_test_Gini = self.performance_train_test(estimator=self.gbc, X=[self.X_train, self.X_test], y=[self.y_train, self.y_test])
-        self.plot_GBM = self.plot_performance([self.GBM_train_performance, self.GBM_test_performance], [GBM_train_KS, GBM_test_KS], [GBM_train_Gini, GBM_test_Gini], name="Gradient Boosting")
-        return(show(self.plot_GBM))
+            train_accuracy = accuracy_score(self.y_train, trainPred[estimator])*100
+            print(f"{estimator} Training accuracy:{train_accuracy:{4}.{4}}%")
+            test_accuracy = accuracy_score(self.y_test, testPred[estimator])*100
+            print(f"{estimator} Test accuracy:{test_accuracy:{4}.{4}}%")
 
-    def fit_Random_forest(self):
-        rfc = RandomForestClassifier()
-        train_sizes, train_scores, test_scores = learning_curve(rfc, self.X_train, self.y_train, cv=5, n_jobs=self.n_jobs, train_sizes=self.train_sizes)
-        curve = pd.concat([pd.DataFrame(train_sizes), pd.DataFrame(np.mean(train_scores, axis=1)), 
-                   pd.DataFrame(np.mean(test_scores, axis=1)), pd.DataFrame(np.std(train_scores, axis=1)), 
-                   pd.DataFrame(np.std(test_scores, axis=1))], axis=1)
-        curve.columns = ["training_sample_size", "mean_train_accuracy", "mean_test_accuracy", "std_train_accuracy", "std_test_accuracy"]
-        self.RF_curve = curve
-        
-        if self.fast:
-            n_rfc = np.min([self.X_train.shape[0], 50000])
-        else:
-            n_rfc = self.X_train.shape[0]
+            train_precision = precision_score(self.y_train, trainPred[estimator])*100
+            print(f"{estimator} Training precision:{train_precision:{4}.{4}}%")
+            test_precision = precision_score(self.y_test, testPred[estimator])*100
+            print(f"{estimator} Test precision:{test_precision:{4}.{4}}%")
 
-        X_train_cv = self.X_train.sample(n=np.int(np.rint(n_rfc)))
-        y_train_cv = self.y_train[self.y_train.index.isin(X_train_cv.index)]
-        y_train_cv = y_train_cv.reindex(X_train_cv.index)
+            self.trainPred, self.testPred = trainPred, testPred
 
-        param_grid_rf = {"n_estimators":[10, 100, 200, 500], "min_weight_fraction_leaf":[0.06, 0.1], "max_depth":[3, 10, 20, 40, 80], "max_features":["auto", "sqrt", "log2", None]}
+    def evaluate_models(self):
+        Gini_table = {}
+        KS = {}
+        Gini = {}
+        plots = {}
+        self.train_bins = {}
 
-        rfc = RandomForestClassifier(n_jobs=self.n_jobs)
-        rfc_clf = RandomizedSearchCV(rfc, param_grid_rf, verbose=self.verbose, cv=self.CV, n_jobs=self.n_jobs, n_iter=100, return_train_score=False)
-        rfc_clf.fit(X_train_cv, y_train_cv)
-        print("Random Forest best CV score:", rfc_clf.best_score_)
-        rfc.set_params(n_estimators=rfc_clf.best_params_["n_estimators"], max_depth=rfc_clf.best_params_["max_depth"], min_weight_fraction_leaf=rfc_clf.best_params_["min_weight_fraction_leaf"], max_features=rfc_clf.best_params_["max_features"])
-
-        rfc.fit(self.X_train, self.y_train)
-        trainPredRF = rfc.predict(self.X_train)
-        testPredRF = rfc.predict(self.X_test)
-        train_accuracy = accuracy_score(self.y_train, trainPredRF)*100
-        print(f"Random Forest Training accuracy:{train_accuracy:{4}.{4}}%")
-        test_accuracy = accuracy_score(self.y_test, testPredRF)*100
-        print(f"Random Forest Test accuracy:{test_accuracy:{4}.{4}}%")
-
-        train_precision = precision_score(self.y_train, trainPredRF)*100
-        print(f"Random Forest Training precision:{train_precision:{4}.{4}}%")
-        test_precision = precision_score(self.y_test, testPredRF)*100
-        print(f"Random Forest Test precision:{test_precision:{4}.{4}}%")
-
-        self.rfc = rfc
-        self.rfc_best_model = rfc_clf
-        self.trainPredRF, self.testPredRF = trainPredRF, testPredRF
-        return self.rfc
-
-    def evaluate_Random_forest(self):
-        self.RF_train_performance, RF_train_KS, RF_train_Gini, self.RF_test_performance, RF_test_KS, RF_test_Gini = self.performance_train_test(self.rfc, [self.X_train, self.X_test], [self.y_train, self.y_test])
-        self.plot_RF = self.plot_performance([self.RF_train_performance, self.RF_test_performance], [RF_train_KS, RF_test_KS], [RF_train_Gini, RF_test_Gini], name="Random Forest")
-        return show(self.plot_RF)
-
-    def fit_SVM(self):
-        svc = SVC(probability=True)
-        train_sizes, train_scores, test_scores = learning_curve(svc, self.X_train, self.y_train, cv=5, n_jobs=self.n_jobs, train_sizes=self.train_sizes)
-        curve = pd.concat([pd.DataFrame(train_sizes), pd.DataFrame(np.mean(train_scores, axis=1)), 
-                   pd.DataFrame(np.mean(test_scores, axis=1)), pd.DataFrame(np.std(train_scores, axis=1)), 
-                   pd.DataFrame(np.std(test_scores, axis=1))], axis=1)
-        curve.columns = ["training_sample_size", "mean_train_accuracy", "mean_test_accuracy", "std_train_accuracy", "std_test_accuracy"]
-        self.svm_curve = curve
-        
-        if self.fast:
-            n_svm = np.min([self.X_train.shape[0], 50000])
-        else:
-            n_svm = self.X_train.shape[0]
-
-        X_train_cv = self.X_train.sample(n=np.int(np.rint(n_svm)))
-        y_train_cv = self.y_train[self.y_train.index.isin(X_train_cv.index)]
-        y_train_cv = y_train_cv.reindex(X_train_cv.index)
-
-        pipe_svc = make_pipeline(StandardScaler(), SVC(random_state=1, probability=True))
-        param_svm1 = {"svc__kernel": ["rbf", "sigmoid", "linear", "poly"]}
-
-        svc_clf1 = GridSearchCV(pipe_svc, param_svm1, verbose=self.verbose, cv=self.CV, n_jobs=self.n_jobs, return_train_score=False)
-        svc_clf1.fit(X_train_cv, y_train_cv)
-
-        pipe_svc = make_pipeline(StandardScaler(), SVC(random_state=1, kernel=svc_clf1.best_params_["svc__kernel"], probability=True))
-
-        param_range = [0.001, 0.01, 0.1, 1.0, 10.0, 100]
-
-        if svc_clf1.best_params_["svc__kernel"] == "linear":
-            param_svm2 = {"svc__C": param_range}
-        else:
-            param_svm2 = {"svc__C": param_range, "svc__gamma": param_range}
-
-        svc_clf2 = GridSearchCV(pipe_svc, param_svm2, verbose=self.verbose, cv=self.CV, n_jobs=self.n_jobs, return_train_score=False)
-        svc_clf2.fit(X_train_cv, y_train_cv)
-
-        print("SVM best CV score:", svc_clf2.best_score_)
-
-        if svc_clf1.best_params_["svc__kernel"] == "linear":
-            pipe_svc = make_pipeline(StandardScaler(), SVC(random_state=1, kernel=svc_clf1.best_params_["svc__kernel"], 
-                                                           C=svc_clf2.best_params_["svc__C"], probability=True))
-        else:
-            pipe_svc = make_pipeline(StandardScaler(), SVC(random_state=1, kernel=svc_clf1.best_params_["svc__kernel"], 
-                                                           C=svc_clf2.best_params_["svc__C"], gamma=svc_clf2.best_params_["svc__gamma"], probability=True))
-
-        pipe_svc.fit(self.X_train, self.y_train)
-        trainPredSVM = pipe_svc.predict(self.X_train)
-        testPredSVM = pipe_svc.predict(self.X_test)
-        train_accuracy = accuracy_score(self.y_train, trainPredSVM)*100
-        print(f"SVM Training accuracy:{train_accuracy:{4}.{4}}%")
-        test_accuracy = accuracy_score(self.y_test, testPredSVM)*100
-        print(f"SVM Test accuracy:{test_accuracy:{4}.{4}}%")
-
-        train_precision = precision_score(self.y_train, trainPredSVM)*100
-        print(f"SVM Training precision:{train_precision:{4}.{4}}%")
-        test_precision = precision_score(self.y_test, testPredSVM)*100
-        print(f"SVM Test precision:{test_precision:{4}.{4}}%")
-
-        self.pipe_svc = pipe_svc
-        self.svm_best_model = svc_clf2
-        self.trainPredSVM, self.testPredSVM = trainPredSVM, testPredSVM
-
-        return self.pipe_svc
-
-    def evaluate_SVM(self):
-        self.SVM_train_performance, SVM_train_KS, SVM_train_Gini, self.SVM_test_performance, SVM_test_KS, SVM_test_Gini = self.performance_train_test(self.pipe_svc, [self.X_train, self.X_test], [self.y_train, self.y_test])
-        self.plot_SVM = self.plot_performance([self.SVM_train_performance, self.SVM_test_performance], [SVM_train_KS, SVM_test_KS], [SVM_train_Gini, SVM_test_Gini], name="Support Vector Machine")
-        return show(self.plot_SVM)
-
-    def fit_Naive_Bayes(self):
-        nb = GaussianNB()
-        nb.fit(self.X_train, self.y_train)
-        trainPredNB = nb.predict(self.X_train)
-        testPredNB = nb.predict(self.X_test)
-
-        train_accuracy = accuracy_score(self.y_train, trainPredNB)*100
-        print(f"Naive Bayes training accuracy:{train_accuracy:{4}.{4}}%")
-        test_accuracy = accuracy_score(self.y_test, testPredNB)*100
-        print(f"Naive Bayes Test accuracy:{test_accuracy:{4}.{4}}%")
-
-        train_precision = precision_score(self.y_train, trainPredNB)*100
-        print(f"Naive Bayes Training precision:{train_precision:{4}.{4}}%")
-        test_precision = precision_score(self.y_test, testPredNB)*100
-        print(f"Naive Bayes Test precision:{test_precision:{4}.{4}}%")
-
-        self.nb = nb
-        self.trainPredNB, self.testPredNB = trainPredNB, testPredNB    
-        return self.nb
-
-    def evaluate_Naive_Bayes(self):
-        self.Naive_Bayes_train_performance, Naive_Bayes_train_KS, Naive_Bayes_train_Gini, self.Naive_Bayes_test_performance, Naive_Bayes_test_KS, Naive_Bayes_test_Gini = self.performance_train_test(self.nb, [self.X_train, self.X_test], [self.y_train, self.y_test])
-        self.plot_Naive_Bayes = self.plot_performance([self.Naive_Bayes_train_performance, self.Naive_Bayes_test_performance], [Naive_Bayes_train_KS, Naive_Bayes_test_KS], [Naive_Bayes_train_Gini, Naive_Bayes_test_Gini], name="Naive Bayes")
-        return show(self.plot_Naive_Bayes)
+        for estimator in self.models:
+            Gini_table[estimator+"_train"], KS[estimator+"_train"], Gini[estimator+"_train"], Gini_table[estimator+"_test"], KS[estimator+"_test"], Gini[estimator+"_test"] = self.performance_train_test(estimator=self.estimators[estimator], X=[self.X_train, self.X_test], y=[self.y_train, self.y_test])
+            plots[estimator] = self.plot_performance([Gini_table[estimator+"_train"], Gini_table[estimator+"_test"]], [KS[estimator+"_train"], KS[estimator+"_test"]], [Gini[estimator+"_train"], Gini[estimator+"_test"]], name=estimator.upper())
+            show(plots[estimator])
+        self.Gini_table, self.KS, self.Gini, self.plots = Gini_table, KS, Gini, plots
 
     def performance(self, estimator, X, y, test_set=False, train_bins=0):
         performance = pd.concat([pd.DataFrame(estimator.predict_proba(X), index=X.index), pd.DataFrame(y)], axis=1)
@@ -308,6 +248,7 @@ class MS:
 
         performance = performance.pivot_table(index="Probability_of_1", values=self.target, aggfunc=[np.sum, len], margins=True).reset_index()
         performance.columns = ["Probability_of_1", "Bad", "Total"]
+        performance = performance[performance.Total.notnull()]
 
         performance = performance[performance.Probability_of_1 != "All"].sort_values(by="Bad", ascending=False).append(performance[performance.Probability_of_1 == "All"])
         performance["Good"] = performance.Total - performance.Bad
@@ -331,7 +272,8 @@ class MS:
 
     def performance_train_test(self, estimator, X, y):
         train_performance, train_KS, train_Gini, bins = self.performance(estimator=estimator, X=X[0], y=y[0])
-        test_performance, test_KS, test_Gini = self.performance(estimator=estimator, X=X[1], y=y[1], test_set=True, train_bins=bins)
+        self.train_bins[estimator] = bins
+        test_performance, test_KS, test_Gini = self.performance(estimator=estimator, X=X[1], y=y[1], test_set=True, train_bins=self.train_bins[estimator])
         return train_performance, train_KS, train_Gini, test_performance, test_KS, test_Gini
 
     def plot_performance(self, performance, ks, gini, name=""):
@@ -343,7 +285,7 @@ class MS:
         p = figure(plot_width=600, plot_height=400, title=f"Gini curve for {name}", )
         p.line(x=plot_data_train["Cumulative_good_%"], y=plot_data_train["Cumulative_bad_%"], legend = "Delinquent distribution - training", line_width=2, line_color="#053C6D", line_alpha=0.5)
         p.line(x=plot_data_test["Cumulative_good_%"], y=plot_data_test["Cumulative_bad_%"], legend = "Delinquent distribution - test", line_width=2, line_color="#97291E", line_alpha=0.5)
-        p.line(x=plot_data_train["Cumulative_good_%"], y=plot_data_train["Cumulative_good_%"], line_color="#E46713", legend = "Random line", line_width=2)
+        p.line(x=plot_data_train["Cumulative_good_%"], y=plot_data_train["Cumulative_good_%"], line_color="#E46713", line_width=2)
 
         p.x_range = Range1d(0, 1)
         p.y_range = Range1d(0, 1)
@@ -369,4 +311,37 @@ class MS:
         p.add_layout(KS_test)
         p.add_layout(Gini_test)
         return p
+
+    def test_on_new_data(self, X, y, models):
+        for i in range(len(X)):
+            for column in X[i].select_dtypes(["object"]).columns:
+                X[i][column] = np.where(X[i][column].isin(self.modelBase[column]), X[i][column], "small_samples_combined")
+
+            X_vec = self.dvec.transform(X[i].transpose().to_dict().values())
+            X[i] = pd.DataFrame(X_vec,columns=self.dvec.get_feature_names(), index=X[i].index)
+            i += 1
+
+            for estimator in models:
+                    self.Gini_table[estimator+"_test"+str(i)], self.KS[estimator+"_test"+str(i)], self.Gini[estimator+"_test"+str(i)] = self.performance(estimator=self.estimators[estimator], X=X[i-1], y=y[i-1], test_set=True, train_bins=self.train_bins[self.estimators[estimator]])
+                    plot_data_new = self.Gini_table[estimator+"_test"+str(i)][self.Gini_table[estimator+"_test"+str(i)].Probability_of_1 != "All"][["Cumulative_good_%", "Cumulative_bad_%"]]
+                    plot_data_new = pd.DataFrame(data={"Cumulative_good_%": 0, "Cumulative_bad_%": 0}, index=[100]).append(plot_data_new)
+                    self.plots[estimator].line(x=plot_data_new["Cumulative_good_%"], y=plot_data_new["Cumulative_bad_%"], legend = "Delinquent distribution - test"+str(i), line_width=2, line_color="black", line_alpha=0.5)
+                    ks = self.KS[estimator+"_test"+str(i)]
+                    gini = self.Gini[estimator+"_test"+str(i)]
+                    KS_new = Label(x=70, y=-20*(i+2), x_units='screen', y_units='screen',
+                                     text="test"+str(i)+f" KS: {ks:{4}.{4}}%", render_mode='css',border_line_alpha=0.0,
+                                     background_fill_color='white', background_fill_alpha=1.0)
+                    Gini_new = Label(x=250, y=-20*(i+2), x_units='screen', y_units='screen',
+                                       text="test"+str(i)+f" Gini: {gini:{4}.{4}}%", render_mode='css',border_line_alpha=0.0,
+                                       background_fill_color='white', background_fill_alpha=1.0)
+                    self.plots[estimator].add_layout(KS_new)
+                    self.plots[estimator].add_layout(Gini_new)
+
+                    show(self.plots[estimator])
+
+
+
+
+
+
 
