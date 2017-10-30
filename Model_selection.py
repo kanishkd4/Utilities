@@ -19,9 +19,9 @@ from bokeh.models import Range1d, Legend, Title, Label
 
 
 __authors__ = "Kanishk Dogar", "Arya Poddar"
-__version__ = "0.0.4"
+__version__ = "0.0.5"
 
-# option to add scorer added
+# changed sort order of performance to probability from bad rate
 class MS:
     """
     Create and summarise different scikit learn models
@@ -250,7 +250,7 @@ class MS:
         performance.columns = ["Probability_of_1", "Bad", "Total"]
         performance = performance[performance.Total.notnull()]
 
-        performance = performance[performance.Probability_of_1 != "All"].sort_values(by="Bad", ascending=False).append(performance[performance.Probability_of_1 == "All"])
+        performance = performance[performance.Probability_of_1 != "All"].sort_values(by="Probability_of_1", ascending=False).append(performance[performance.Probability_of_1 == "All"])
         performance["Good"] = performance.Total - performance.Bad
         performance["Cumulative_good"] = performance.Good.cumsum()
         performance.loc[performance[performance.Probability_of_1 == "All"].index, "Cumulative_good"] = performance.loc[performance[performance.Probability_of_1 == "All"].index, "Good"]
