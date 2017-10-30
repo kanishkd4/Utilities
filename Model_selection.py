@@ -21,7 +21,7 @@ from bokeh.models import Range1d, Legend, Title, Label
 __authors__ = "Kanishk Dogar", "Arya Poddar"
 __version__ = "0.0.5"
 
-# changed sort order of performance to probability from bad rate
+# changed sort order of performance to probability from bad rate and changed n_jobs to self.n_jobs in RandomizedSearchCV
 class MS:
     """
     Create and summarise different scikit learn models
@@ -156,7 +156,7 @@ class MS:
 
         for estimator in models:
             if estimator in ["gbm", "random_forest"]:
-                clf[estimator] = RandomizedSearchCV(estimators[estimator], param_grid[estimator], verbose=self.verbose, cv=self.CV, n_jobs=-1, n_iter=100, return_train_score=False, scoring=self.scoring)
+                clf[estimator] = RandomizedSearchCV(estimators[estimator], param_grid[estimator], verbose=self.verbose, cv=self.CV, n_jobs=self.n_jobs, n_iter=100, return_train_score=False, scoring=self.scoring)
                 clf[estimator].fit(X_train_cv, y_train_cv)
                 print(estimator+" best CV score:", clf[estimator].best_score_)
                 if estimator == "gbm":
