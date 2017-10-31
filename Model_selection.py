@@ -21,7 +21,7 @@ from bokeh.models import Range1d, Legend, Title, Label
 __authors__ = "Kanishk Dogar", "Arya Poddar"
 __version__ = "0.0.6"
 
-# made fitting a learning curve optional
+# made fitting a learning curve optional; changed logic for X_traincv/y_triancv
 class MS:
     """
     Create and summarise different scikit learn models
@@ -143,9 +143,9 @@ class MS:
                 else:
                     n_cv[estimator] = self.X_train.shape[0]
 
-                X_train_cv = self.X_train.sample(n=np.int(np.rint(n_cv[estimator])))
-                y_train_cv = self.y_train[self.y_train.index.isin(X_train_cv.index)]
-                y_train_cv = y_train_cv.reindex(X_train_cv.index)
+                cv = pd.concat([self.X_train, self.y_train], axis=1)
+                cv = cv.sample(n=n_cv[estimator])
+                X_train_cv, y_train_cv = cv.loc[:, cv.columns != self.target], cv[self.target]
                 for estimator in models:
                     if estimator == "gbm":
                         param_grid[estimator] = {"learning_rate":[0.001, 0.01, 0.1, 1], "n_estimators":[10, 100, 500], "min_weight_fraction_leaf":[0.06, 0.1], "max_depth":[3, 10, 20, 40, 80]}
