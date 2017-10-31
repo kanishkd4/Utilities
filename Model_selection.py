@@ -19,9 +19,9 @@ from bokeh.models import Range1d, Legend, Title, Label
 
 
 __authors__ = "Kanishk Dogar", "Arya Poddar"
-__version__ = "0.0.5"
+__version__ = "0.0.6"
 
-# changed sort order of performance to probability from bad rate and changed n_jobs to self.n_jobs in RandomizedSearchCV
+# made fitting a learning curve optional
 class MS:
     """
     Create and summarise different scikit learn models
@@ -35,7 +35,7 @@ class MS:
         the name of the dataframe in which all the data is stored
     """
     def __init__(self, modelBase, target="target", small_sample_floor=0.01, combine_small_samples=True, test_size=0.2, random_state=12345, univariate_test=True,
-                n_jobs=-1, learning_curve_train_sizes=[0.05, 0.1, 0.2, 0.4, 0.75, 1], fast=True, CV=5, verbose=1, automated=False, scoring="accuracy"):
+                n_jobs=-1, learning_curve_train_sizes=[0.05, 0.1, 0.2, 0.4, 0.75, 1], fast=True, CV=5, verbose=1, automated=False, scoring="accuracy", learning_curve=False):
         self.target = target
         self.modelBase = modelBase
         self.small_sample_floor = small_sample_floor
@@ -49,6 +49,7 @@ class MS:
         self.CV = CV
         self.verbose = verbose
         self.scoring = scoring
+        self.learning_curve = learning_curve
 
 
         if self.univariate_test:
@@ -119,7 +120,7 @@ class MS:
             elif estimator == "random_forest":
                 estimators[estimator] = RandomForestClassifier()
             elif estimator == "svm":
-                estimators[estimator] = SVC(random_state=1, probability=True)
+                estimators[estimator] = SVC()
             elif estimator == "naive_bayes":
                 estimators[estimator] = GaussianNB()
             elif estimator == "logistic_regression":
@@ -129,12 +130,13 @@ class MS:
 
         for estimator in models:
             if estimator in ["gbm", "random_forest", "svm", "logistic_regression"]:
-                train_sizes, train_scores, test_scores = learning_curve(estimators[estimator], self.X_train, self.y_train, cv=5, n_jobs=self.n_jobs, train_sizes=self.train_sizes)
-                curve = pd.concat([pd.DataFrame(train_sizes), pd.DataFrame(np.mean(train_scores, axis=1)), 
-                           pd.DataFrame(np.mean(test_scores, axis=1)), pd.DataFrame(np.std(train_scores, axis=1)), 
-                           pd.DataFrame(np.std(test_scores, axis=1))], axis=1)
-                curve.columns = ["training_sample_size", "mean_train_accuracy", "mean_test_accuracy", "std_train_accuracy", "std_test_accuracy"]
-                self.curve[estimator] = curve
+                if self.learning_curve:
+                    train_sizes, train_scores, test_scores = learning_curve(estimators[estimator], self.X_train, self.y_train, cv=5, n_jobs=self.n_jobs, train_sizes=self.train_sizes)
+                    curve = pd.concat([pd.DataFrame(train_sizes), pd.DataFrame(np.mean(train_scores, axis=1)), 
+                               pd.DataFrame(np.mean(test_scores, axis=1)), pd.DataFrame(np.std(train_scores, axis=1)), 
+                               pd.DataFrame(np.std(test_scores, axis=1))], axis=1)
+                    curve.columns = ["training_sample_size", "mean_train_accuracy", "mean_test_accuracy", "std_train_accuracy", "std_test_accuracy"]
+                    self.curve[estimator] = curve
         
                 if self.fast:
                     n_cv[estimator] = np.min([self.X_train.shape[0], 50000])
