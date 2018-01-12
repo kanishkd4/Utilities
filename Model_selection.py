@@ -18,10 +18,17 @@ from bokeh.plotting import figure, show, output_notebook, gridplot
 from bokeh.models import Range1d, Legend, Title, Label
 
 
-__authors__ = "Kanishk Dogar", "Arya Poddar"
-__version__ = "0.0.6"
+__authors__ = "Kanishk Dogar"
+__version__ = "0.0.7"
 
-# made fitting a learning curve optional; changed logic for X_traincv/y_triancv
+# change dictvectorizer to train only on the training set - done
+# complete learning curve
+# add params as user defined
+# add the ability to specify object variables in the class
+# add paths in the input to export
+# add ensemble
+
+
 class MS:
     """
     Create and summarise different scikit learn models
@@ -33,9 +40,35 @@ class MS:
         name of the target column
     modelBase: pandas dataframe
         the name of the dataframe in which all the data is stored
+    export_path: string
+        path to export all model objects and performance tables
+    scoring: string
+        scoring parameter for hyperparameter optimization
+    combine_small_samples: bool
+        if true, small categorical samples in every variables are combined to create one category. The minimum percentage is given by small_samples_floor
+    small_sample_floor: numeric
+        small samples in categorical variables are combined to form one category. e.g. if value is 0.01, all categorical variables
+    random_state: integer
+        select the random state
+    univariate_test: bool
+        if true, create a dataframe var_start_list within the class to describe the data
+    n_jobs: integer
+        number of processors to use for the models
+    learning_curve: bool
+        use a learning curve to determine the training data size for hyperparameter optimization
+    learning_curve_train_sizes: list of floats
+        the proportions of the training data to use to select the data for hyperparameter optimization
+    fast: bool
+        if fast=True and not using the learning curve, select a random subset of 50,000 training samples for hyperparameter optimization
+    fast_count: integer
+        if fast=True, the number of training examples to use for hyperparameter optimization
+    CV: integer
+        value of k for k fold cross vaidation
+    automated: boolean
+        run the automated code on the data.
     """
-    def __init__(self, modelBase, target="target", small_sample_floor=0.01, combine_small_samples=True, test_size=0.2, random_state=12345, univariate_test=True,
-                n_jobs=-1, learning_curve_train_sizes=[0.05, 0.1, 0.2, 0.4, 0.75, 1], fast=True, CV=5, verbose=1, automated=False, scoring="accuracy", learning_curve=False):
+    def __init__(self, modelBase, target="target", export_path="", scoring="roc_auc", combine_small_samples=True, small_sample_floor=0.01, test_size=0.2, random_state=12345, 
+    	univariate_test=True, n_jobs=5, learning_curve=False, learning_curve_train_sizes=[0.05, 0.1, 0.2, 0.4, 0.75, 1], fast=True, fast_count=50000, CV=5, verbose=1, automated=False):
         self.target = target
         self.modelBase = modelBase
         self.small_sample_floor = small_sample_floor
@@ -50,7 +83,8 @@ class MS:
         self.verbose = verbose
         self.scoring = scoring
         self.learning_curve = learning_curve
-
+        self.fast_count = fast_count
+        self.export_path = export_path
 
         if self.univariate_test:
             self.univariate()
@@ -94,19 +128,32 @@ class MS:
         if self.univariate:
             self.modelBase.drop(list(self.var_start_list[(self.var_start_list["var_vals"] < 2)].index), axis=1, inplace=True)
 
-        if self.combine_small_samples:
-            for column in self.modelBase.select_dtypes(["object"]).columns:
-                cnt = pd.value_counts(self.modelBase[column], normalize=True)
-                self.modelBase[column] = np.where(self.modelBase[column].isin(cnt[cnt < self.small_sample_floor].index), "small_samples_combined", self.modelBase[column])
-
         self.X, self.y = self.modelBase.loc[:, self.modelBase.columns != self.target], self.modelBase[self.target]
+        X_train, X_test, y_train, y_test = train_test_split(self.X, self.y, test_size=self.test_size, random_state=self.random_state)
+
+        if self.combine_small_samples:
+            for column in X_train.select_dtypes(["object"]).columns:
+                cnt = pd.value_counts(X_train[column], normalize=True)
+                X_train[column] = np.where(X_train[column].isin(cnt[cnt < self.small_sample_floor].index), "small_samples_combined", X_train[column])
+
+            for column in X_test.select_dtypes(["object"]).columns:
+                X_test[column] = np.where(X_test[column].isin(X_train[column]), X_test[column], "small_samples_combined")
+
+        
         self.dvec = DictVectorizer(sparse=False)
-        X_dict = self.dvec.fit_transform(self.X.transpose().to_dict().values())
-        self.X = pd.DataFrame(X_dict, columns=self.dvec.get_feature_names(), index=self.modelBase.index)
+        X_dict = self.dvec.fit_transform(X_train.transpose().to_dict().values())
+        X_train = pd.DataFrame(X_dict, columns=self.dvec.get_feature_names(), index=X_train.index)
 
-        self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(self.X, self.y, test_size=self.test_size, random_state=self.random_state)
+        X_test_dict = self.dvec.transform(X_test.transpose().to_dict().values())
+        X_test = pd.DataFrame(X_test_dict, columns=self.dvec.get_feature_names(), index=X_test.index)
 
-    def fit_models(self, models=["gbm", "random_forest", "svm", "naive_bayes", "logistic_regression"]):
+        self.X_train, self.X_test, self.y_train, self.y_test = X_train, X_test, y_train, y_test
+
+
+    def fit_models(self, models=["gbm", "random_forest", "svm", "naive_bayes", "logistic_regression"],
+        gbm_params={"learning_rate":[0.001, 0.01, 0.1, 1], "n_estimators":[10, 100, 500], "min_weight_fraction_leaf":[0.06, 0.1], "max_depth":[3, 10, 20, 40, 80]},
+        random_forest_params={"n_estimators":[10, 100, 200, 500], "min_weight_fraction_leaf":[0.06, 0.1], "max_depth":[3, 10, 20, 40, 80], "max_features":["auto", "sqrt", "log2", None]},
+        ):
         self.models = models
         self.curve = {}
         estimators = {}
@@ -139,7 +186,7 @@ class MS:
                     self.curve[estimator] = curve
         
                 if self.fast:
-                    n_cv[estimator] = np.min([self.X_train.shape[0], 50000])
+                    n_cv[estimator] = np.min([self.X_train.shape[0], self.fast_count])
                 else:
                     n_cv[estimator] = self.X_train.shape[0]
 
@@ -148,9 +195,9 @@ class MS:
                 X_train_cv, y_train_cv = cv.loc[:, cv.columns != self.target], cv[self.target]
                 for estimator in models:
                     if estimator == "gbm":
-                        param_grid[estimator] = {"learning_rate":[0.001, 0.01, 0.1, 1], "n_estimators":[10, 100, 500], "min_weight_fraction_leaf":[0.06, 0.1], "max_depth":[3, 10, 20, 40, 80]}
+                        param_grid[estimator] = gbm_params
                     elif estimator == "random_forest":
-                        param_grid[estimator] = {"n_estimators":[10, 100, 200, 500], "min_weight_fraction_leaf":[0.06, 0.1], "max_depth":[3, 10, 20, 40, 80], "max_features":["auto", "sqrt", "log2", None]}
+                        param_grid[estimator] = random_forest_params
                     elif estimator == "svm":
                         param_grid[estimator+"1"] = {"svc__kernel": ["rbf", "sigmoid", "linear", "poly"]}
                     elif estimator == "logistic_regression":
@@ -220,10 +267,10 @@ class MS:
             test_accuracy = accuracy_score(self.y_test, testPred[estimator])*100
             print(f"{estimator} Test accuracy:{test_accuracy:{4}.{4}}%")
 
-            train_precision = precision_score(self.y_train, trainPred[estimator])*100
-            print(f"{estimator} Training precision:{train_precision:{4}.{4}}%")
-            test_precision = precision_score(self.y_test, testPred[estimator])*100
-            print(f"{estimator} Test precision:{test_precision:{4}.{4}}%")
+            train_f1_score = f1_score(self.y_train, trainPred[estimator])*100
+            print(f"{estimator} Training f1_score:{train_f1_score:{4}.{4}}%")
+            test_f1_score = f1_score(self.y_test, testPred[estimator])*100
+            print(f"{estimator} Test f1_score:{train_f1_score:{4}.{4}}%")
 
             self.trainPred, self.testPred = trainPred, testPred
 
