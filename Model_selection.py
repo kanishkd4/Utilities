@@ -22,7 +22,7 @@ from bokeh.models import Range1d, Legend, Title, Label
 
 
 __author__ = "Kanishk Dogar"
-__version__ = "0.0.7"
+__version__ = "0.0.8"
 
 """
 Tested for the following versions
@@ -244,7 +244,7 @@ class model_train:
     def parameter_search(self):
         
         if self.learning_curve:
-            n_cv = max(self.learning_sample.values())
+            n_cv = np.int(np.floor(max(self.learning_sample.values())*1.25))
             cv = pd.concat([self.X_train, self.y_train], axis=1)
             cv = cv.sample(n=n_cv)
             X_train_cv, y_train_cv = cv.loc[:, cv.columns != self.target], cv[self.target]
