@@ -481,6 +481,7 @@ class model_train:
         for column in X_levels.select_dtypes(["object"]).columns:
             self.feature_levels[column] = X_levels.loc[:, column].unique()
         for i in range(len(X)):
+            X[i] = X[i].loc[:, X_levels.columns]
             X[i] = data_process(data=X[i], categorical_columns=self.categorical_columns, cat_na=self.cat_na, num_na=self.num_na)
             for column in X[i].select_dtypes(["object"]).columns:
                 X[i].loc[:, column] = np.where(X[i][column].isin(self.feature_levels[column]), X[i].loc[:, column], "small_samples_combined")
@@ -555,7 +556,8 @@ def model_apply(X, path="", model="", DictVectorizer="DictVectorizer.pkl",
 
 
     for column in X.select_dtypes(["object"]).columns:
-        X.loc[:, column] = np.where(X[column].isin(feature_levels[column]), X.loc[:, column], "small_samples_combined")
+        if column in feature_levels.keys():
+            X.loc[:, column] = np.where(X[column].isin(feature_levels[column]), X.loc[:, column], "small_samples_combined")
 
     X_vec = dvec.transform(X.transpose().to_dict().values())
     X = pd.DataFrame(X_vec,columns=dvec.get_feature_names(), index=X.index)
