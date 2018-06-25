@@ -60,9 +60,7 @@ def train_test_transform(modelBase, target="target", small_sample_floor=0.01, co
     return X_train, X_test, y_train, y_test
 
 
-############ NEVER TESTED
-
-def performance_proba(estimator, X, y, test_set=False, train_bins=0, bad=1, n_bins=10, target="target"):
+def performance_proba(estimator, X, y, test_set=False, train_bins=0, bad=1, n_bins=10, target="target", event=1):
     performance = pd.concat([pd.DataFrame(estimator.predict_proba(X), index=X.index), pd.DataFrame(y)], axis=1)
     if test_set:
         performance["Probability_of_bad"] = pd.cut(performance.loc[:, event], bins=train_bins)
@@ -99,3 +97,15 @@ def performance_proba_train_test(estimator, X, y, n_bins=10, bad=1):
     train_bins = bins
     test_performance, test_KS, test_Gini = performance_proba(estimator=estimator, X=X[1], y=y[1], test_set=True, train_bins=train_bins[estimator])
     return train_performance_proba, train_KS, train_Gini, test_performance_proba, test_KS, test_Gini
+
+
+def convert_mutli_to_single_index(data, filler="_"):
+    cols = []
+    for i in range(len(data.columns.get_level_values(0))):
+        name = ""
+        for j in range(len(data.columns.levels)-1, -1, -1):
+            nametemp = data.columns.get_level_values(j)[i]
+            name = nametemp+filler+name
+        cols = cols+[name]
+    data.columns = cols
+    return data.head(2)
