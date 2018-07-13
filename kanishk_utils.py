@@ -8,6 +8,9 @@ pd.set_option("display.max_columns",100)
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction import DictVectorizer
 
+import openpyxl
+from openpyxl.utils.dataframe import dataframe_to_rows
+
 
 
 def feature_importance(data, model):
@@ -109,3 +112,17 @@ def convert_mutli_to_single_index(data, filler="_"):
         cols = cols+[name]
     data.columns = cols
     return data.head(2)
+
+
+def write_to_excel(df, excel_path, sheet_name="Sheet1", start_cell=(1, 1), header=True, index=False):
+    """
+    Write a data frame to an existing excel file. The file must have a sheet with the specific name present
+    """
+    rows = dataframe_to_rows(df, index=index, header=header)
+    wb = openpyxl.load_workbook(excel_path)
+    sheetx = wb[sheet_name]
+    for r_idx, row in enumerate(rows, 1):
+        for c_idx, value in enumerate(row, 1):
+            sheetx.cell(row=r_idx+start_cell[0]-1, column=c_idx+start_cell[1]-1, value=value)
+    wb.save(excel_path)
+    wb.close()
