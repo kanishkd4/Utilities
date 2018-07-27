@@ -117,6 +117,20 @@ def convert_mutli_to_single_index(data, filler="_"):
 def write_to_excel(df, excel_path, sheet_name="Sheet1", start_cell=(1, 1), header=True, index=False):
     """
     Write a data frame to an existing excel file. The file must have a sheet with the specific name present
+    Parameters
+    ----------
+    df: pd.DataFrame
+        A pandas dataframe
+    excel path: raw string literal 
+        Give the path as a raw string literal; r"path to file"
+    sheet_name: string
+        Name of the excel sheet to add the dataframe to
+    start_cell: tuple
+        The (row, column) of the sheet cell to write the dataframe values to
+    header: bool
+        If True, the dataframe will be written with headers
+    index: book
+        If True, the dataframe will be written with the index
     """
     rows = dataframe_to_rows(df, index=index, header=header)
     wb = openpyxl.load_workbook(excel_path)
