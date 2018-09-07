@@ -375,9 +375,12 @@ class model_train:
             train_bins[train_bins.shape[0]-1] = 1.0
             performance["Probability_of_Event"] = pd.cut(performance.loc[:, "Probability_of_Event"], bins=train_bins, include_lowest=True)        
 
-        performance = performance.pivot_table(index="Probability_of_Event", values=self.target, aggfunc=[np.sum, len], margins=True).reset_index()
-        performance.columns = ["Probability_of_Event", "Event", "Total"]
+        performance = pd.concat([performance.groupby(by="Probability_of_Event")[self.target].sum(), 
+                         performance.groupby(by="Probability_of_Event")[self.target].count()], axis=1)
+        performance["Probability_of_Event"] = performance.index
+        performance.columns = ["Event", "Total", "Probability_of_Event"]
         performance = performance[performance.Total.notnull()]
+        performance = performance.append(pd.DataFrame(data={"Event": np.sum(performance.Event), "Total": np.sum(performance.Total), "Probability_of_Event": "All"},index=["All"]), ignore_index=True)
 
         performance = performance[performance.Probability_of_Event != "All"].sort_values(by="Probability_of_Event", ascending=False).append(performance[performance.Probability_of_Event == "All"])
         performance["Non_event"] = performance.Total - performance.Event
