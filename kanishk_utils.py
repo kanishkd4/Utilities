@@ -63,42 +63,91 @@ def train_test_transform(modelBase, target="target", small_sample_floor=0.01, co
     return X_train, X_test, y_train, y_test
 
 
-def performance_proba(estimator, X, y, test_set=False, train_bins=0, bad=1, n_bins=10, target="target", event=1):
-    performance = pd.concat([pd.DataFrame(estimator.predict_proba(X), index=X.index), pd.DataFrame(y)], axis=1)
+def proba_score_performance(actual, prediction, test_set=False, train_bins=0, event=1, target="target"):
+    performance = pd.concat([pd.DataFrame(prediction, columns=["Probability_of_Event"]), pd.DataFrame(actual)], axis=1)
+    performance.loc[:, target] = np.where(performance.loc[:, target] == event, 1, 0)
+
     if test_set:
-        performance["Probability_of_bad"] = pd.cut(performance.loc[:, event], bins=train_bins)
+        performance["Probability_of_Event"] = pd.cut(performance.loc[:, "Probability_of_Event"], bins=train_bins, include_lowest=True)
     else:
-        seg, train_bins = pd.qcut(performance.loc[:, 1].round(12), n_bins, retbins=True, duplicates="drop")
-        performance["Probability_of_bad"] = pd.cut(performance.loc[:, event], bins=train_bins)
+        seg, train_bins = pd.qcut(performance.loc[:, "Probability_of_Event"].round(12), 10, retbins=True, duplicates="drop")
+        train_bins[0] = np.min([0.0, performance.loc[:, "Probability_of_Event"].min()])
+        train_bins[train_bins.shape[0]-1] = np.max([1.0, performance.loc[:, "Probability_of_Event"].max()])
+        performance["Probability_of_Event"] = pd.cut(performance.loc[:, "Probability_of_Event"], bins=train_bins, include_lowest=True)        
 
-    performance = performance.pivot_table(index="Probability_of_bad", values=target, aggfunc=[np.sum, len], margins=True).reset_index()
-    performance.columns = ["Probability_of_bad", "Bad", "Total"]
+    performance = pd.concat([performance.groupby(by="Probability_of_Event")[target].sum(), 
+                     performance.groupby(by="Probability_of_Event")[target].count()], axis=1)
+    performance["Probability_of_Event"] = performance.index
+    performance.columns = ["Event", "Total", "Probability_of_Event"]
     performance = performance[performance.Total.notnull()]
+    performance = performance.append(pd.DataFrame(data={"Event": np.sum(performance.Event), "Total": np.sum(performance.Total), "Probability_of_Event": "All"},index=["All"]), ignore_index=True)
 
-    performance = performance[performance.Probability_of_bad != "All"].sort_values(by="Probability_of_bad", ascending=False).append(performance[performance.Probability_of_bad == "All"])
-    performance["Good"] = performance.Total - performance.Bad
-    performance["Cumulative_good"] = performance.Good.cumsum()
-    performance.loc[performance[performance.Probability_of_bad == "All"].index, "Cumulative_good"] = performance.loc[performance[performance.Probability_of_bad == "All"].index, "Good"]
-    performance["Cumulative_bad"] = performance.Bad.cumsum()
-    performance.loc[performance[performance.Probability_of_bad == "All"].index, "Cumulative_bad"] = performance.loc[performance[performance.Probability_of_bad == "All"].index, "Bad"]
-    performance["Population_%"] = performance.Total/performance[performance.Probability_of_bad == "All"].Total.values
-    performance["Cumulative_good_%"] = performance.Cumulative_good/performance[performance.Probability_of_bad == "All"].Cumulative_good.values
-    performance["Cumulative_bad_%"] = performance.Cumulative_bad/performance[performance.Probability_of_bad == "All"].Cumulative_bad.values
-    performance["Difference"] = performance["Cumulative_bad_%"] - performance["Cumulative_good_%"]
-    performance["Bad_rate"] = performance.Bad/performance.Total
-    performance["Gini"] = ((performance["Cumulative_bad_%"]+performance["Cumulative_bad_%"].shift(1).fillna(0))/2)*(performance["Cumulative_good_%"]-performance["Cumulative_good_%"].shift(1).fillna(0))
-    performance.loc[performance[performance.Probability_of_bad == "All"].index, "Gini"] = np.nan
-    model_KS = np.max(performance[performance.Probability_of_bad != "All"].Difference)*100
-    model_Gini = (2*(np.sum(performance[performance.Probability_of_bad != "All"].Gini))-1)*100
+    performance = performance[performance.Probability_of_Event != "All"].sort_values(by="Probability_of_Event", ascending=False).append(performance[performance.Probability_of_Event == "All"])
+    performance["Non_event"] = performance.Total - performance.Event
+    performance["Cumulative_Non_event"] = performance.Non_event.cumsum()
+    performance.loc[performance[performance.Probability_of_Event == "All"].index, "Cumulative_Non_event"] = performance.loc[performance[performance.Probability_of_Event == "All"].index, "Non_event"]
+    performance["Cumulative_Event"] = performance.Event.cumsum()
+    performance.loc[performance[performance.Probability_of_Event == "All"].index, "Cumulative_Event"] = performance.loc[performance[performance.Probability_of_Event == "All"].index, "Event"]
+    performance["Population_%"] = performance.Total/performance[performance.Probability_of_Event == "All"].Total.values
+    performance["Cumulative_Non_event_%"] = performance.Cumulative_Non_event/performance[performance.Probability_of_Event == "All"].Cumulative_Non_event.values
+    performance["Cumulative_Event_%"] = performance.Cumulative_Event/performance[performance.Probability_of_Event == "All"].Cumulative_Event.values
+    performance["Difference"] = performance["Cumulative_Event_%"] - performance["Cumulative_Non_event_%"]
+    performance["Event_rate"] = performance.Event/performance.Total
+    performance["Gini"] = ((performance["Cumulative_Event_%"]+performance["Cumulative_Event_%"].shift(1).fillna(0))/2)*(performance["Cumulative_Non_event_%"]-performance["Cumulative_Non_event_%"].shift(1).fillna(0))
+    performance.loc[performance[performance.Probability_of_Event == "All"].index, "Gini"] = np.nan
+    model_KS = np.max(performance[performance.Probability_of_Event != "All"].Difference)*100
+    model_Gini = (2*(np.sum(performance[performance.Probability_of_Event != "All"].Gini))-1)*100
+    if test_set:
+        return performance, model_KS, model_Gini
+    else:
+        return performance, model_KS, model_Gini, train_bins
+
+def estimator_performance(estimator, X, y, test_set=False, train_bins=0, event=1, target="target"):
+    performance = pd.concat([pd.DataFrame(estimator.predict_proba(X), index=X.index), pd.DataFrame(y)], axis=1)
+    performance.loc[:, "Probability_of_non_Event"] = 1 - performance.loc[:, event]
+    performance.loc[:, target] = np.where(performance.loc[:, target] == event, 1, 0)
+    performance.rename(columns={event: "Probability_of_Event"}, inplace=True)
+    performance = performance.loc[:, ["Probability_of_Event", "Probability_of_non_Event", target]]
+
+    if test_set:
+        performance["Probability_of_Event"] = pd.cut(performance.loc[:, "Probability_of_Event"], bins=train_bins, include_lowest=True)
+    else:
+        seg, train_bins = pd.qcut(performance.loc[:, "Probability_of_Event"].round(12), 10, retbins=True, duplicates="drop")
+        train_bins[0] = np.min([0.0, performance.loc[:, "Probability_of_Event"].min()])
+        train_bins[train_bins.shape[0]-1] = np.max([1.0, performance.loc[:, "Probability_of_Event"].max()])
+        performance["Probability_of_Event"] = pd.cut(performance.loc[:, "Probability_of_Event"], bins=train_bins, include_lowest=True)        
+
+    performance = pd.concat([performance.groupby(by="Probability_of_Event")[target].sum(), 
+                     performance.groupby(by="Probability_of_Event")[target].count()], axis=1)
+    performance["Probability_of_Event"] = performance.index
+    performance.columns = ["Event", "Total", "Probability_of_Event"]
+    performance = performance[performance.Total.notnull()]
+    performance = performance.append(pd.DataFrame(data={"Event": np.sum(performance.Event), "Total": np.sum(performance.Total), "Probability_of_Event": "All"},index=["All"]), ignore_index=True)
+
+    performance = performance[performance.Probability_of_Event != "All"].sort_values(by="Probability_of_Event", ascending=False).append(performance[performance.Probability_of_Event == "All"])
+    performance["Non_event"] = performance.Total - performance.Event
+    performance["Cumulative_Non_event"] = performance.Non_event.cumsum()
+    performance.loc[performance[performance.Probability_of_Event == "All"].index, "Cumulative_Non_event"] = performance.loc[performance[performance.Probability_of_Event == "All"].index, "Non_event"]
+    performance["Cumulative_Event"] = performance.Event.cumsum()
+    performance.loc[performance[performance.Probability_of_Event == "All"].index, "Cumulative_Event"] = performance.loc[performance[performance.Probability_of_Event == "All"].index, "Event"]
+    performance["Population_%"] = performance.Total/performance[performance.Probability_of_Event == "All"].Total.values
+    performance["Cumulative_Non_event_%"] = performance.Cumulative_Non_event/performance[performance.Probability_of_Event == "All"].Cumulative_Non_event.values
+    performance["Cumulative_Event_%"] = performance.Cumulative_Event/performance[performance.Probability_of_Event == "All"].Cumulative_Event.values
+    performance["Difference"] = performance["Cumulative_Event_%"] - performance["Cumulative_Non_event_%"]
+    performance["Event_rate"] = performance.Event/performance.Total
+    performance["Gini"] = ((performance["Cumulative_Event_%"]+performance["Cumulative_Event_%"].shift(1).fillna(0))/2)*(performance["Cumulative_Non_event_%"]-performance["Cumulative_Non_event_%"].shift(1).fillna(0))
+    performance.loc[performance[performance.Probability_of_Event == "All"].index, "Gini"] = np.nan
+    model_KS = np.max(performance[performance.Probability_of_Event != "All"].Difference)*100
+    model_Gini = (2*(np.sum(performance[performance.Probability_of_Event != "All"].Gini))-1)*100
     if test_set:
         return performance, model_KS, model_Gini
     else:
         return performance, model_KS, model_Gini, train_bins
 
 def performance_proba_train_test(estimator, X, y, n_bins=10, bad=1):
-    train_performance, train_KS, train_Gini, bins = performance_proba(estimator=estimator, X=X[0], y=y[0], n_bins=n_bins)
+    train_performance, train_KS, train_Gini, bins = estimator_performance(estimator=estimator, X=X[0], y=y[0], n_bins=n_bins)
     train_bins = bins
-    test_performance, test_KS, test_Gini = performance_proba(estimator=estimator, X=X[1], y=y[1], test_set=True, train_bins=train_bins[estimator])
+    test_performance, test_KS, test_Gini = estimator_performance(estimator=estimator, X=X[1], y=y[1], test_set=True, train_bins=train_bins[estimator])
     return train_performance_proba, train_KS, train_Gini, test_performance_proba, test_KS, test_Gini
 
 
@@ -140,3 +189,5 @@ def write_to_excel(df, excel_path, sheet_name="Sheet1", start_cell=(1, 1), heade
             sheetx.cell(row=r_idx+start_cell[0]-1, column=c_idx+start_cell[1]-1, value=value)
     wb.save(excel_path)
     wb.close()
+
+
