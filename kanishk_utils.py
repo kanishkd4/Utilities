@@ -54,13 +54,16 @@ def train_test_transform(modelBase, target="target", small_sample_floor=0.01, co
             modelBase[column] = np.where(modelBase[column].isin(cnt[cnt < small_sample_floor].index), "small_samples_combined", modelBase[column])
 
     X, y = modelBase.loc[:, modelBase.columns != target], modelBase[target]
-    dvec = DictVectorizer(sparse=False)
-    X_dict = dvec.fit_transform(X.transpose().to_dict().values())
-    X = pd.DataFrame(X_dict, columns=dvec.get_feature_names(), index=modelBase.index)
-
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state)
 
-    return X_train, X_test, y_train, y_test
+    dvec = DictVectorizer(sparse=False)
+    X_dict = dvec.fit_transform(X_train.transpose().to_dict().values())
+    X_train = pd.DataFrame(X_dict, columns=dvec.get_feature_names(), index=X_train.index)
+
+    X_dict = dvec.transform(X_test.transpose().to_dict().values())
+    X_test = pd.DataFrame(X_dict, columns=dvec.get_feature_names(), index=X_test.index)
+    
+    return X_train, X_test, y_train, y_test, dvec
 
 
 def proba_score_performance(actual, prediction, test_set=False, train_bins=0, event=1, target="target"):
