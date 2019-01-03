@@ -67,7 +67,25 @@ def train_test_transform(modelBase, target="target", small_sample_floor=0.01, co
 
 
 def proba_score_performance(actual, prediction, test_set=False, train_bins=0, event=1, target="target"):
-    performance = pd.concat([pd.DataFrame(prediction, columns=["Probability_of_Event"]), pd.DataFrame(actual)], axis=1)
+    """
+    Get the KS/Gini coefficient and the table to create the lorenz curve with 10 bins
+    Parameters
+    ----------
+    actual: pd.Series
+        A pandas Series with the target values
+    prediction: A numpy array with the predicted probabilities or score. 1 D array with the same length as actual
+        Give the path as a raw string literal; r"path to file"
+    test_set: bool
+        Set to False if the prediction needs to be binned using quantiles. True if training set bins are present
+        train_bins = a list of cut points if this is True
+    train_bins: list
+        list of cutpoints that bin the training set into 10 parts
+    event: integer
+        The target value the gini table needs to be created for
+    target: str
+        The name of the target column in `actual`
+    """
+    performance = pd.concat([pd.DataFrame(prediction, columns=["Probability_of_Event"], index=actual.index), pd.DataFrame(actual)], axis=1)
     performance.loc[:, target] = np.where(performance.loc[:, target] == event, 1, 0)
 
     if test_set:
@@ -106,6 +124,26 @@ def proba_score_performance(actual, prediction, test_set=False, train_bins=0, ev
         return performance, model_KS, model_Gini, train_bins
 
 def estimator_performance(estimator, X, y, test_set=False, train_bins=0, event=1, target="target"):
+    """
+    Get the KS/Gini coefficient and the table to create the lorenz curve with 10 bins
+    Parameters
+    ----------
+    estimator: sklearn estimator
+        A scikit learn estimator to be applied on `X`
+    X: pd.DataFrame
+        A pandas DataFrame with the features for prediction
+    y: pd.Series
+        A pandas Series with the target values
+    test_set: bool
+        Set to False if the prediction needs to be binned using quantiles. True if training set bins are present
+        train_bins = a list of cut points if this is True
+    train_bins: list
+        list of cutpoints that bin the training set into 10 parts
+    event: integer
+        The target value the gini table needs to be created for
+    target: str
+        The name of the target column in `y`
+    """
     performance = pd.concat([pd.DataFrame(estimator.predict_proba(X), index=X.index), pd.DataFrame(y)], axis=1)
     performance.loc[:, "Probability_of_non_Event"] = 1 - performance.loc[:, event]
     performance.loc[:, target] = np.where(performance.loc[:, target] == event, 1, 0)
@@ -181,7 +219,7 @@ def write_to_excel(df, excel_path, sheet_name="Sheet1", start_cell=(1, 1), heade
         The (row, column) of the sheet cell to write the dataframe values to
     header: bool
         If True, the dataframe will be written with headers
-    index: book
+    index: bool
         If True, the dataframe will be written with the index
     """
     rows = dataframe_to_rows(df, index=index, header=header)
