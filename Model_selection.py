@@ -370,7 +370,7 @@ class model_train:
         if test_set:
             performance["Probability_of_Event"] = pd.cut(performance.loc[:, "Probability_of_Event"], bins=train_bins, include_lowest=True)
         else:
-            seg, train_bins = pd.qcut(performance.loc[:, "Probability_of_Event"].round(12), 10, retbins=True, duplicates="drop")
+            _, train_bins = pd.qcut(performance.loc[:, "Probability_of_Event"].round(12), 10, retbins=True, duplicates="drop")
             train_bins[0] = 0.0
             train_bins[train_bins.shape[0]-1] = 1.0
             performance["Probability_of_Event"] = pd.cut(performance.loc[:, "Probability_of_Event"], bins=train_bins, include_lowest=True)        

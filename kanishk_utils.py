@@ -65,115 +65,60 @@ def train_test_transform(modelBase, target="target", small_sample_floor=0.01, co
     
     return X_train, X_test, y_train, y_test, dvec
 
-def gini_variable(actual, prediction, bins=6, event=1, target="target"):
+def ks_gini_metrics(base, probability="Probability_of_event", event_name="Event", total_name="Total",
+                   ascending=False):
     """
-    Get a gini coefficient for any variable in the data. This is meant to be a function to manually check
-    the trend and predictive power of any numeric variable during feature engineering
+    Get the KS/Gini coefficient from a pivot table with 3 specific columns - probability/score band, event count and total count
     Parameters
     ----------
-    actual: pd.Series
-        A pandas Series with the target values
-    prediction: pd.Series
-        A pandas Series with the variable used for prediction
-    bins: integer
-        no. of quantile bins to create
-    train_bins: list
-        list of cutpoints that bin the training set into 10 parts
-    event: integer
-        The target value the gini table needs to be created for
-    target: str
-        The name of the target column in `actual`
-    """    
-    performance = pd.concat([pd.DataFrame(prediction), pd.DataFrame(actual)], axis=1)
-    performance.columns = ["Variable_bin", target]
-    performance.loc[:, target] = np.where(performance.loc[:, target] == event, 1, 0)
-    seg, train_bins = pd.qcut(performance.loc[:, "Variable_bin"], bins, retbins=True, duplicates="drop")
-    train_bins[0] = np.min([0.0, performance.loc[:, "Variable_bin"].min()])
-    train_bins[train_bins.shape[0]-1] = np.max([1.0, performance.loc[:, "Variable_bin"].max()])
-    performance["Variable_bin"] = pd.cut(performance.loc[:, "Variable_bin"], bins=train_bins, include_lowest=True)        
-
-    performance = pd.concat([performance.groupby(by="Variable_bin")[target].sum(), 
-                     performance.groupby(by="Variable_bin")[target].count()], axis=1)
-    performance["Variable_bin"] = performance.index
-    performance.columns = ["Event", "Total", "Variable_bin"]
-    performance = performance[performance.Total.notnull()]
-    performance = performance.append(pd.DataFrame(data={"Event": np.sum(performance.Event), "Total": np.sum(performance.Total), "Variable_bin": "All"},index=["All"]), ignore_index=True)
-
-    performance = performance[performance.Variable_bin != "All"].sort_values(by="Variable_bin", ascending=False).append(performance[performance.Variable_bin == "All"])
-    performance["Non_event"] = performance.Total - performance.Event
-    performance["Cumulative_Non_event"] = performance.Non_event.cumsum()
-    performance.loc[performance[performance.Variable_bin == "All"].index, "Cumulative_Non_event"] = performance.loc[performance[performance.Variable_bin == "All"].index, "Non_event"]
-    performance["Cumulative_Event"] = performance.Event.cumsum()
-    performance.loc[performance[performance.Variable_bin == "All"].index, "Cumulative_Event"] = performance.loc[performance[performance.Variable_bin == "All"].index, "Event"]
-    performance["Population_%"] = performance.Total/performance[performance.Variable_bin == "All"].Total.values
-    performance["Cumulative_Non_event_%"] = performance.Cumulative_Non_event/performance[performance.Variable_bin == "All"].Cumulative_Non_event.values
-    performance["Cumulative_Event_%"] = performance.Cumulative_Event/performance[performance.Variable_bin == "All"].Cumulative_Event.values
-    performance["Difference"] = performance["Cumulative_Event_%"] - performance["Cumulative_Non_event_%"]
-    performance["Event_rate"] = performance.Event/performance.Total
-    performance["Gini"] = ((performance["Cumulative_Event_%"]+performance["Cumulative_Event_%"].shift(1).fillna(0))/2)*(performance["Cumulative_Non_event_%"]-performance["Cumulative_Non_event_%"].shift(1).fillna(0))
-    performance.loc[performance[performance.Variable_bin == "All"].index, "Gini"] = np.nan
-    model_KS = np.max(performance[performance.Variable_bin != "All"].Difference)*100
-    model_Gini = (2*(np.sum(performance[performance.Variable_bin != "All"].Gini))-1)*100
-    return performance.loc[:, ["Variable_bin", "Event", "Total", "Event_rate"]], model_Gini
-
-def proba_score_performance(actual, prediction, test_set=False, train_bins=0, event=1, target="target"):
+    base: pd.DataFrame
+        A pandas dataframe created using a group by operation with a probability or score band. 
+        The pivot should be created with margins=False
+    probability: str
+        column name of the column that contains the band
+    event_name: str
+        column name of the column that contains the event count for every band
+    total_name: str
+        column name of the column that contains the total count for every band
+    ascending: bool
+        Order of the probability or score band in the final table
     """
-    Get the KS/Gini coefficient and the table to create the lorenz curve with 10 bins
-    Parameters
-    ----------
-    actual: pd.Series
-        A pandas Series with the target values
-    prediction: np.array
-    A numpy array with the predicted probabilities or score. 1 D array with the same length as actual
-    test_set: bool
-        Set to False if the prediction needs to be binned using quantiles. True if training set bins are present
-        train_bins = a list of cut points if this is True
-    train_bins: list
-        list of cutpoints that bin the training set into 10 parts
-    event: integer
-        The target value the gini table needs to be created for
-    target: str
-        The name of the target column in `actual`
-    """
-    performance = pd.concat([pd.DataFrame(prediction, columns=["Variable_bin"], index=actual.index), pd.DataFrame(actual)], axis=1)
-    performance.loc[:, target] = np.where(performance.loc[:, target] == event, 1, 0)
+    base = base.loc[:, [probability, event_name, total_name]]
+    base = base[base.loc[:, total_name].notnull()]
+    base = base.append(pd.DataFrame(data={event_name: np.sum(base.loc[:, event_name]), 
+                                          total_name: np.sum(base.loc[:, total_name]), 
+                                          probability: "All"},index=["All"]), ignore_index=True, sort=True)
+    
+    base = base[base.loc[:, probability] != "All"]. \
+    sort_values(by=probability, ascending=ascending). \
+    append(base[base.loc[:, probability] == "All"], sort=True).loc[:, [probability, total_name, event_name]]
+    
+    base["Non_"+event_name] = base.loc[:, total_name] - base.loc[:, event_name]
+    base["Cumulative_Non_"+event_name] = base.loc[:, "Non_"+event_name].cumsum()
+    base.loc[base[base.loc[:, probability] == "All"].index, "Cumulative_Non_"+event_name] = \
+    base.loc[base[base.loc[:, probability] == "All"].index, "Non_"+event_name]
+    base["Cumulative_"+event_name] = base.loc[:, event_name].cumsum()
+    base.loc[base[base.loc[:, probability] == "All"].index, "Cumulative_Event"] = \
+    base.loc[base[base.loc[:, probability] == "All"].index, "Event"]
+    base["Population_%"] = base.loc[:, total_name]/base[base.loc[:, probability] == "All"].loc[:, total_name].values
+    base["Cumulative_Non_"+event_name+"_%"] = \
+    base.loc[:, "Cumulative_Non_"+event_name]/base[base.loc[:, probability] == "All"].loc[:, "Cumulative_Non_"+event_name].values
+    base["Cumulative_"+event_name+"_%"] = \
+    base.loc[:, "Cumulative_"+event_name]/base[base.loc[:, probability] == "All"].loc[:, "Cumulative_"+event_name].values
+    base["Difference"] = base["Cumulative_"+event_name+"_%"] - base["Cumulative_Non_"+event_name+"_%"]
+    base[event_name+"_rate"] = base.loc[:, event_name]/base.loc[:, total_name]
+    
+    base["Gini"] = ((base["Cumulative_"+event_name+"_%"]+base["Cumulative_"+event_name+"_%"].shift(1).fillna(0))/2) \
+    *(base["Cumulative_Non_"+event_name+"_%"]-base["Cumulative_Non_"+event_name+"_%"].shift(1).fillna(0))
+    
+    base.loc[base[base.loc[:, probability] == "All"].index, "Gini"] = np.nan
+    model_KS = np.max(base[base.loc[:, probability] != "All"].Difference)*100
+    model_Gini = (2*(np.sum(base[base.loc[:, probability] != "All"].Gini))-1)*100
+    return base, model_KS, model_Gini
 
-    if test_set:
-        performance["Variable_bin"] = pd.cut(performance.loc[:, "Variable_bin"], bins=train_bins, include_lowest=True)
-    else:
-        seg, train_bins = pd.qcut(performance.loc[:, "Variable_bin"].round(12), 10, retbins=True, duplicates="drop")
-        train_bins[0] = np.min([0.0, performance.loc[:, "Variable_bin"].min()])
-        train_bins[train_bins.shape[0]-1] = np.max([1.0, performance.loc[:, "Variable_bin"].max()])
-        performance["Variable_bin"] = pd.cut(performance.loc[:, "Variable_bin"], bins=train_bins, include_lowest=True)        
-
-    performance = pd.concat([performance.groupby(by="Variable_bin")[target].sum(), 
-                     performance.groupby(by="Variable_bin")[target].count()], axis=1)
-    performance["Variable_bin"] = performance.index
-    performance.columns = ["Event", "Total", "Variable_bin"]
-    performance = performance[performance.Total.notnull()]
-    performance = performance.append(pd.DataFrame(data={"Event": np.sum(performance.Event), "Total": np.sum(performance.Total), "Variable_bin": "All"},index=["All"]), ignore_index=True)
-
-    performance = performance[performance.Variable_bin != "All"].sort_values(by="Variable_bin", ascending=False).append(performance[performance.Variable_bin == "All"])
-    performance["Non_event"] = performance.Total - performance.Event
-    performance["Cumulative_Non_event"] = performance.Non_event.cumsum()
-    performance.loc[performance[performance.Variable_bin == "All"].index, "Cumulative_Non_event"] = performance.loc[performance[performance.Variable_bin == "All"].index, "Non_event"]
-    performance["Cumulative_Event"] = performance.Event.cumsum()
-    performance.loc[performance[performance.Variable_bin == "All"].index, "Cumulative_Event"] = performance.loc[performance[performance.Variable_bin == "All"].index, "Event"]
-    performance["Population_%"] = performance.Total/performance[performance.Variable_bin == "All"].Total.values
-    performance["Cumulative_Non_event_%"] = performance.Cumulative_Non_event/performance[performance.Variable_bin == "All"].Cumulative_Non_event.values
-    performance["Cumulative_Event_%"] = performance.Cumulative_Event/performance[performance.Variable_bin == "All"].Cumulative_Event.values
-    performance["Difference"] = performance["Cumulative_Event_%"] - performance["Cumulative_Non_event_%"]
-    performance["Event_rate"] = performance.Event/performance.Total
-    performance["Gini"] = ((performance["Cumulative_Event_%"]+performance["Cumulative_Event_%"].shift(1).fillna(0))/2)*(performance["Cumulative_Non_event_%"]-performance["Cumulative_Non_event_%"].shift(1).fillna(0))
-    performance.loc[performance[performance.Variable_bin == "All"].index, "Gini"] = np.nan
-    model_KS = np.max(performance[performance.Variable_bin != "All"].Difference)*100
-    model_Gini = (2*(np.sum(performance[performance.Variable_bin != "All"].Gini))-1)*100
-    if test_set:
-        return performance, model_KS, model_Gini
-    else:
-        return performance, model_KS, model_Gini, train_bins
-
-def estimator_performance(estimator, X, y, test_set=False, train_bins=0, event=1, target="target"):
+def estimator_performance(estimator, X, y, test_set=False, train_bins=0, event=1, target="target",
+                              probability="Probability_of_event", event_name="Event", total_name="Total",
+                             ascending=False, bins=10):
     """
     Get the KS/Gini coefficient and the table to create the lorenz curve with 10 bins
     Parameters
@@ -192,48 +137,139 @@ def estimator_performance(estimator, X, y, test_set=False, train_bins=0, event=1
     event: integer
         The target value the gini table needs to be created for
     target: str
-        The name of the target column in `y`
+        The name of the target column in `y`. If the name does not match, it will be changed to the user input
+    probability: str
+        column name of the column that contains the band
+    event_name: str
+        column name of the column that contains the event count for every band
+    total_name: str
+        column name of the column that contains the total count for every band
+    ascending: bool
+        Order of the probability or score band in the final table
+    bins: integer
+        no. of quantile bins to create
     """
+    y.name = target
     performance = pd.concat([pd.DataFrame(estimator.predict_proba(X), index=X.index), pd.DataFrame(y)], axis=1)
     performance.loc[:, "Probability_of_non_Event"] = 1 - performance.loc[:, event]
     performance.loc[:, target] = np.where(performance.loc[:, target] == event, 1, 0)
-    performance.rename(columns={event: "Variable_bin"}, inplace=True)
-    performance = performance.loc[:, ["Variable_bin", "Probability_of_non_Event", target]]
+    performance.rename(columns={event: probability}, inplace=True)
+    performance = performance.loc[:, [probability, "Probability_of_non_Event", target]]
 
     if test_set:
-        performance["Variable_bin"] = pd.cut(performance.loc[:, "Variable_bin"], bins=train_bins, include_lowest=True)
+        performance[probability] = pd.cut(performance.loc[:, probability], bins=train_bins, include_lowest=True)
     else:
-        seg, train_bins = pd.qcut(performance.loc[:, "Variable_bin"].round(12), 10, retbins=True, duplicates="drop")
-        train_bins[0] = np.min([0.0, performance.loc[:, "Variable_bin"].min()])
-        train_bins[train_bins.shape[0]-1] = np.max([1.0, performance.loc[:, "Variable_bin"].max()])
-        performance["Variable_bin"] = pd.cut(performance.loc[:, "Variable_bin"], bins=train_bins, include_lowest=True)        
+        _, train_bins = pd.qcut(performance.loc[:, probability].round(12), bins, retbins=True, duplicates="drop")
+        train_bins[0] = np.min([0.0, performance.loc[:, probability].min()])
+        train_bins[train_bins.shape[0]-1] = np.max([1.0, performance.loc[:, probability].max()])
+        performance[probability] = pd.cut(performance.loc[:, probability], bins=train_bins, include_lowest=True)        
+
+    performance = pd.concat([performance.groupby(by=probability)[target].sum(), 
+                     performance.groupby(by=probability)[target].count()], axis=1)
+    performance[probability] = performance.index
+    performance.columns = [event_name, total_name, probability]
+    
+    performance, model_KS, model_Gini = ks_gini_metrics(performance, probability=probability, event_name=event_name,
+                                                       total_name=total_name, ascending=ascending)
+    
+    if test_set:
+        return performance, model_KS, model_Gini
+    else:
+        return performance, model_KS, model_Gini, train_bins
+
+def proba_score_performance(actual, prediction, test_set=False, train_bins=0, event=1, target="target",
+                              probability="Probability_of_event", event_name="Event", total_name="Total",
+                             ascending=False, bins=10):
+    """
+    Get the KS/Gini coefficient and the table to create the lorenz curve with 10 bins
+    Parameters
+    ----------
+    actual: pd.Series
+        A pandas Series with the target values
+    prediction: np.array
+    A numpy array with the predicted probabilities or score. 1 D array with the same length as actual
+    test_set: bool
+        Set to False if the prediction needs to be binned using quantiles. True if training set bins are present
+        train_bins = a list of cut points if this is True
+    train_bins: list
+        list of cutpoints that bin the training set into 10 parts
+    event: integer
+        The target value the gini table needs to be created for
+   target: str
+        The name of the target column in `actual`. If the name does not match, it will be changed to the user input
+    probability: str
+        column name of the column that contains the band
+    event_name: str
+        column name of the column that contains the event count for every band
+    total_name: str
+        column name of the column that contains the total count for every band
+    ascending: bool
+        Order of the probability or score band in the final table
+    bins: integer
+        no. of quantile bins to create
+    """
+    actual.name = target
+    performance = pd.concat([pd.DataFrame(prediction, columns=[probability], index=actual.index), pd.DataFrame(actual)], axis=1)
+    performance.loc[:, target] = np.where(performance.loc[:, target] == event, 1, 0)
+
+    if test_set:
+        performance[probability] = pd.cut(performance.loc[:, probability], bins=train_bins, include_lowest=True)
+    else:
+        _, train_bins = pd.qcut(performance.loc[:, probability].round(12), bins, retbins=True, duplicates="drop")
+        train_bins[0] = np.min([0.0, performance.loc[:, probability].min()])
+        train_bins[train_bins.shape[0]-1] = np.max([1.0, performance.loc[:, probability].max()])
+        performance[probability] = pd.cut(performance.loc[:, probability], bins=train_bins, include_lowest=True)   
+
+    performance = pd.concat([performance.groupby(by=probability)[target].sum(), 
+                     performance.groupby(by=probability)[target].count()], axis=1)
+    performance[probability] = performance.index
+    performance.columns = [event_name, total_name, probability]
+    
+    performance, model_KS, model_Gini = ks_gini_metrics(performance, probability=probability, event_name=event_name,
+                                                       total_name=total_name, ascending=ascending)
+    
+    if test_set:
+        return performance, model_KS, model_Gini
+    else:
+        return performance, model_KS, model_Gini, train_bins
+
+def gini_variable(actual, prediction, bins=6, event=1, target="target", ascending=False):
+    """
+    Get a gini coefficient for any variable in the data. This is meant to be a function to manually check
+    the trend and predictive power of any numeric variable during feature engineering
+    Parameters
+    ----------
+    actual: pd.Series
+        A pandas Series with the target values
+    prediction: pd.Series
+        A pandas Series with the variable used for prediction
+    bins: integer
+        no. of quantile bins to create
+    train_bins: list
+        list of cutpoints that bin the training set into 10 parts
+    event: integer
+        The target value the gini table needs to be created for
+    target: str
+        The name of the target column in `actual`. If the name does not match, it will be changed to the user input
+    ascending: bool
+        Order of the probability or score band in the final table
+    """
+    actual.name = target
+    performance = pd.concat([pd.DataFrame(prediction), pd.DataFrame(actual)], axis=1)
+    performance.columns = ["Variable_bin", target]
+    performance.loc[:, target] = np.where(performance.loc[:, target] == event, 1, 0)
+    seg, train_bins = pd.qcut(performance.loc[:, "Variable_bin"], bins, retbins=True, duplicates="drop")
+    train_bins[0] = np.min([0.0, performance.loc[:, "Variable_bin"].min()])
+    train_bins[train_bins.shape[0]-1] = np.max([1.0, performance.loc[:, "Variable_bin"].max()])
+    performance["Variable_bin"] = pd.cut(performance.loc[:, "Variable_bin"], bins=train_bins, include_lowest=True)        
 
     performance = pd.concat([performance.groupby(by="Variable_bin")[target].sum(), 
                      performance.groupby(by="Variable_bin")[target].count()], axis=1)
     performance["Variable_bin"] = performance.index
     performance.columns = ["Event", "Total", "Variable_bin"]
-    performance = performance[performance.Total.notnull()]
-    performance = performance.append(pd.DataFrame(data={"Event": np.sum(performance.Event), "Total": np.sum(performance.Total), "Variable_bin": "All"},index=["All"]), ignore_index=True)
-
-    performance = performance[performance.Variable_bin != "All"].sort_values(by="Variable_bin", ascending=False).append(performance[performance.Variable_bin == "All"])
-    performance["Non_event"] = performance.Total - performance.Event
-    performance["Cumulative_Non_event"] = performance.Non_event.cumsum()
-    performance.loc[performance[performance.Variable_bin == "All"].index, "Cumulative_Non_event"] = performance.loc[performance[performance.Variable_bin == "All"].index, "Non_event"]
-    performance["Cumulative_Event"] = performance.Event.cumsum()
-    performance.loc[performance[performance.Variable_bin == "All"].index, "Cumulative_Event"] = performance.loc[performance[performance.Variable_bin == "All"].index, "Event"]
-    performance["Population_%"] = performance.Total/performance[performance.Variable_bin == "All"].Total.values
-    performance["Cumulative_Non_event_%"] = performance.Cumulative_Non_event/performance[performance.Variable_bin == "All"].Cumulative_Non_event.values
-    performance["Cumulative_Event_%"] = performance.Cumulative_Event/performance[performance.Variable_bin == "All"].Cumulative_Event.values
-    performance["Difference"] = performance["Cumulative_Event_%"] - performance["Cumulative_Non_event_%"]
-    performance["Event_rate"] = performance.Event/performance.Total
-    performance["Gini"] = ((performance["Cumulative_Event_%"]+performance["Cumulative_Event_%"].shift(1).fillna(0))/2)*(performance["Cumulative_Non_event_%"]-performance["Cumulative_Non_event_%"].shift(1).fillna(0))
-    performance.loc[performance[performance.Variable_bin == "All"].index, "Gini"] = np.nan
-    model_KS = np.max(performance[performance.Variable_bin != "All"].Difference)*100
-    model_Gini = (2*(np.sum(performance[performance.Variable_bin != "All"].Gini))-1)*100
-    if test_set:
-        return performance, model_KS, model_Gini
-    else:
-        return performance, model_KS, model_Gini, train_bins
+    performance, model_KS, model_Gini = ks_gini_metrics(performance, probability="Variable_bin", event_name="Event",
+                                                       total_name="Total", ascending=ascending)
+    return performance.loc[:, ["Variable_bin", "Event", "Total", "Event_rate"]], model_Gini
 
 def performance_proba_train_test(estimator, X, y, n_bins=10, bad=1):
     train_performance, train_KS, train_Gini, bins = estimator_performance(estimator=estimator, X=X[0], y=y[0], n_bins=n_bins)
