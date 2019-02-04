@@ -98,8 +98,8 @@ def ks_gini_metrics(base, probability="Probability_of_event", event_name="Event"
     base.loc[base[base.loc[:, probability] == "All"].index, "Cumulative_Non_"+event_name] = \
     base.loc[base[base.loc[:, probability] == "All"].index, "Non_"+event_name]
     base["Cumulative_"+event_name] = base.loc[:, event_name].cumsum()
-    base.loc[base[base.loc[:, probability] == "All"].index, "Cumulative_Event"] = \
-    base.loc[base[base.loc[:, probability] == "All"].index, "Event"]
+    base.loc[base[base.loc[:, probability] == "All"].index, "Cumulative_"+event_name] = \
+    base.loc[base[base.loc[:, probability] == "All"].index, event_name]
     base["Population_%"] = base.loc[:, total_name]/base[base.loc[:, probability] == "All"].loc[:, total_name].values
     base["Cumulative_Non_"+event_name+"_%"] = \
     base.loc[:, "Cumulative_Non_"+event_name]/base[base.loc[:, probability] == "All"].loc[:, "Cumulative_Non_"+event_name].values
@@ -209,7 +209,7 @@ def proba_score_performance(actual, prediction, test_set=False, train_bins=0, ev
         no. of quantile bins to create
     """
     actual.name = target
-    performance = pd.concat([pd.DataFrame(prediction, columns=[probability], index=actual.index), pd.DataFrame(actual)], axis=1)
+    performance = pd.concat([pd.DataFrame({probability: prediction}, index=actual.index), pd.DataFrame(actual)], axis=1)
     performance.loc[:, target] = np.where(performance.loc[:, target] == event, 1, 0)
 
     if test_set:
