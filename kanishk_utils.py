@@ -318,3 +318,22 @@ def write_to_excel(df, excel_path, sheet_name="Sheet1", start_cell=(1, 1), heade
     wb.close()
 
 
+
+def parse_nested_json(x, dataframe=pd.DataFrame(), parent=""):
+    """
+    parse a nested list or dict structure that ends at a key value pair to a 2 column dataframe with all parent keys in 1 column. 
+    The parents will be separated by an _
+    x: the nested json or dictionary key value pairs
+    dataframe: an empty dataframe
+    """
+    if type(x) == dict:
+        for key in x.keys():
+            if (type(x[key]) != list) & (type(x[key]) != dict):
+                dataframe = dataframe.append(pd.DataFrame(data = {"variable": parent+"_"+key, "value": str(x[key])}, index=[0]))
+            else:
+                dataframe = parse_nested_json(x[key], dataframe, parent=parent+"_"+key)
+    elif type(x) == list:
+        for i in range(len(x)):
+            dataframe = parse_nested_json(x[i], dataframe, parent=parent+"_")
+    return dataframe
+
