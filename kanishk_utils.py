@@ -348,7 +348,7 @@ def get_specific_col_types(df, type_list=["string", "floating"]):
     
     Returns
     -------
-    final_types: list
+    final_cols: list
         A list of col names that are the specific type
     col_dict: dict
         A dict of all col names and types
@@ -357,5 +357,5 @@ def get_specific_col_types(df, type_list=["string", "floating"]):
     for column in df.columns:
         col_dict[column] = pd.api.types.infer_dtype(df[column])
     
-    final_types = [x for x in col_dict.keys() if re.search("|".join(type_list), col_dict[x])]
-    return final_types, col_dict
+    final_cols = [x for x in col_dict.keys() if re.search("|".join(type_list), col_dict[x])]
+    return final_cols, col_dict
