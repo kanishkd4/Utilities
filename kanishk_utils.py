@@ -337,3 +337,25 @@ def parse_nested_json(x, dataframe=pd.DataFrame(), parent=""):
             dataframe = parse_nested_json(x[i], dataframe, parent=parent+"_")
     return dataframe
 
+def get_specific_col_types(df, type_list=["string", "floating"]):
+    """
+    Get the dtypes using pd.api and filter for specific types needed. Useful for dataframes with mixed types
+    Parameters
+    ----------
+    df: pd.DataFrame
+        Name of the dataframe to look for types in
+    type_list: list of types we need to filter out
+    
+    Returns
+    -------
+    final_types: list
+        A list of col names that are the specific type
+    col_dict: dict
+        A dict of all col names and types
+    """
+    col_dict = {}
+    for column in df.columns:
+        col_dict[column] = pd.api.types.infer_dtype(df[column])
+    
+    final_types = [x for x in col_dict.keys() if re.search("|".join(type_list), col_dict[x])]
+    return final_types, col_dict
