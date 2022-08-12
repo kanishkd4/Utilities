@@ -191,4 +191,4 @@ exec xrandr --output HDMI-0 --auto --left-of DP-4 --rotate "right"
 exec /usr/bin/setxkbmap -option "ctrl:nocaps"
 focus_follows_mouse no
 mouse_warping none
-exec xset r rate 220 60
+exec xset r rate 250 60
