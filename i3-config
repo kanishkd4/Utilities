@@ -41,7 +41,8 @@ bindsym XF86AudioMicMute exec --no-startup-id pactl set-source-mute @DEFAULT_SOU
 floating_modifier $mod
 
 # start a terminal
-bindsym $mod+Return exec i3-sensible-terminal
+# bindsym $mod+Return exec i3-sensible-terminal
+bindsym $mod+Return exec alacritty
 
 # kill focused window
 bindsym $mod+Shift+q kill
@@ -188,7 +189,7 @@ exec --no-startup-id ~/bin/natural_scrolling
 exec xset m 26/10 4
 
 exec xrandr --output HDMI-0 --auto --left-of DP-4 --rotate "right"
-exec /usr/bin/setxkbmap -option "ctrl:nocaps"
 focus_follows_mouse no
 mouse_warping none
 exec xset r rate 250 60
+exec /usr/bin/setxkbmap -option "ctrl:nocaps"
