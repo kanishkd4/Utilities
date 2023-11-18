@@ -188,7 +188,7 @@ exec --no-startup-id ~/bin/natural_scrolling
 # Setting mouse acceleration
 exec xset m 26/10 4
 
-exec xrandr --output HDMI-0 --auto --left-of DP-4 --rotate "right"
+# exec xrandr --output HDMI-0 --auto --left-of DP-4 --rotate "right"
 focus_follows_mouse no
 mouse_warping none
 exec xset r rate 250 60
