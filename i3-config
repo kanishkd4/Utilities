@@ -192,4 +192,4 @@ exec xset m 26/10 4
 focus_follows_mouse no
 mouse_warping none
 exec xset r rate 250 60
-exec /usr/bin/setxkbmap -option "ctrl:nocaps"
+exec /usr/bin/setxkbmap -option "ctrl:nocaps" && xset r rate 250 60
