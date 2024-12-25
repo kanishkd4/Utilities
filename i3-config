@@ -187,7 +187,8 @@ exec xset m 26/10 4
 # exec xrandr --output HDMI-0 --auto --left-of DP-4 --rotate "right"
 focus_follows_mouse no
 mouse_warping none
-exec xset r rate 250 60
-exec /usr/bin/setxkbmap -option "ctrl:nocaps" && xset r rate 250 60
+# exec xset r rate 250 60
+# exec /usr/bin/setxkbmap -option "ctrl:nocaps" && xset r rate 250 60
 # exec /usr/bin/setxkbmap -option "ctrl:nocaps" -option "altwin:swap_alt_win" && xset r rate 250 60
-# /usr/bin/setxkbmap -option "altwin:swap_alt_win"
+
+exec_always --no-startup-id ~/bin/keyboard_settings
