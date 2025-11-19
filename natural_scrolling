@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# Get all pointer devices
+devices=$(xinput list --id-only)
+
+for id in $devices; do
+    # Check if device is a pointer
+    if xinput list-props $id 2>/dev/null | grep -q "libinput Natural Scrolling Enabled"; then
+        xinput set-prop $id "libinput Natural Scrolling Enabled" 1
+    fi
+done
