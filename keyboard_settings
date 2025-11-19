@@ -1,0 +1,4 @@
+#!/bin/bash
+# Restore keyboard settings
+setxkbmap -option "ctrl:nocaps" -option "altwin:swap_alt_win"
+xset r rate 250 60
