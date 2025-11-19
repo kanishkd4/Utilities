@@ -1,0 +1,2 @@
+sudo apt update
+sudo apt install i3 i3status xorg xinit x11-xkb-utils x11-xserver-utils x11-utils xss-lock i3lock network-manager-gnome pulseaudio-utils alacritty
