@@ -192,3 +192,9 @@ mouse_warping none
 # exec /usr/bin/setxkbmap -option "ctrl:nocaps" -option "altwin:swap_alt_win" && xset r rate 250 60
 
 exec_always --no-startup-id ~/bin/keyboard_settings
+
+# Take a screenshot of a region and copy to clipboard
+bindsym Print exec --no-startup-id maim -s | xclip -selection clipboard -t image/png
+
+# Take a full screenshot and save to a folder
+bindsym Shift+Print exec --no-startup-id maim ~/Pictures/$(date +%s).png
