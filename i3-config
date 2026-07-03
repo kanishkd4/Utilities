@@ -198,3 +198,6 @@ bindsym Print exec --no-startup-id maim -s | xclip -selection clipboard -t image
 
 # Take a full screenshot and save to a folder
 bindsym Shift+Print exec --no-startup-id maim ~/Pictures/$(date +%s).png
+
+# Automatically restore keyboard repeat rate on KVM switch / hotplug
+exec_always --no-startup-id bash -c 'udevadm monitor --subsystem=input | while read -r line; do if [[ "$line" == *"bind"* ]]; then sleep 0.2; xset r rate 250 60; fi; done'
